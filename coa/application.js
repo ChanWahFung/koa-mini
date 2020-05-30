@@ -29,7 +29,7 @@ module.exports = class Coa {
       const ctx = this.createContext(req, res)
       // fn 为第一个应用中间件的引用
       const fn = this.compose(this.middleware)
-      return this.handleRequest(ctx, fn)
+      return fn(ctx).then(() => respond(ctx)).catch(console.error)
     }
     return handleRequest
   }
@@ -45,10 +45,6 @@ module.exports = class Coa {
     ctx.res = request.res = response.res = res
     ctx.state = {}
     return ctx
-  }
-
-  handleRequest(ctx, fn) {
-    return fn(ctx).then(() => respond(ctx)).catch(console.error)
   }
 
   // 中间件处理逻辑实现
