@@ -41,9 +41,14 @@ module.exports = class Coa {
     const request = ctx.request = Object.create(this.request)
     const response = ctx.response = Object.create(this.response)
     // 原生属性
+    ctx.app = request.app = response.app = this;
     ctx.req = request.req = response.req = req
     ctx.res = request.res = response.res = res
-    ctx.state = {}
+
+    request.ctx = response.ctx = ctx;
+    request.response = response;
+    response.request = request;
+
     return ctx
   }
 
