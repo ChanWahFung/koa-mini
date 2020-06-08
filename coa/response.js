@@ -5,6 +5,12 @@ module.exports = {
   set status(val) {
     return this.res.statusCode = val
   },
+  get body() {
+    return this._body
+  },
+  set body(val) {
+    return this._body = val
+  },
   set(filed, val) {
     if (typeof filed === 'string') {
       this.res.setHeader(filed, val)

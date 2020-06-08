@@ -37,11 +37,12 @@ module.exports = class Coa {
   // 创建上下文
   createContext(req, res) {
     const ctx = Object.create(this.context)
-    // 处理过的属性
+    // 扩展的属性
     const request = ctx.request = Object.create(this.request)
     const response = ctx.response = Object.create(this.response)
-    // 原生属性
+    
     ctx.app = request.app = response.app = this;
+    // 原生属性
     ctx.req = request.req = response.req = req
     ctx.res = request.res = response.res = res
 
