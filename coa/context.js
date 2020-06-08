@@ -7,7 +7,7 @@ function delegateGetter(prop, name){
   })
 }
 function delegateSetter(prop, name){
-  proto.__defineGetter__(name, function(val){
+  proto.__defineSetter__(name, function(val){
     return this[prop][name] = val
   })
 }
