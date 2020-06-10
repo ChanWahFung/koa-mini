@@ -27,7 +27,7 @@ module.exports = class Coa {
     const handleRequest = (req, res) => {
       // 创建上下文
       const ctx = this.createContext(req, res)
-      // fn 为第一个应用中间件的引用
+      // fn 为第一个应用中间件
       const fn = this.compose(this.middleware)
       return fn(ctx).then(() => respond(ctx)).catch(console.error)
     }
@@ -63,7 +63,7 @@ module.exports = class Coa {
           return Promise.resolve()
         }
         // dispatch.bind(null, i + 1) 为应用中间件接受到的 next
-        // next 即下一个应用中间件的函数引用
+        // next 即下一个应用中间件
         try {
           return Promise.resolve(fn(ctx, dispatch.bind(null, i + 1)))
         } catch (error) {

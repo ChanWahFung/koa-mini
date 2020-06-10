@@ -1,16 +1,14 @@
 ## 前言
 
-本文是我在阅读 `Koa` 源码并实现迷你版 `Koa` 后整理出来的过程。如果你使用过 `Koa` 但不知道内部的原理，我想这篇文章能够帮助到你。
+本文是我在阅读 `Koa` 源码后，并实现迷你版 `Koa` 的过程。如果你使用过 `Koa` 但不知道内部的原理，我想这篇文章应该能够帮助到你，实现一个迷你版的 `Koa` 不会很难。
 
-本文会循序渐进的解析 `Koa` 内部的原理，包括：
+本文会循序渐进的解析内部原理，包括：
 
 1. 基础版本的 koa
 2. context 的实现
 3. 中间件原理及实现
 
 ## 文件结构
-
-`Koa` 源码文件:
 
 * `application.js`: 入口文件，里面包括我们常用的 `use` 方法、`listen` 方法以及对 `ctx.body` 做输出处理
 * `context.js`: 主要是做属性和方法的代理，让用户能够更简便的访问到`request`和`response`的属性和方法
@@ -75,7 +73,7 @@ module.exports = class Coa {
 
 `ctx` 为我们扩展了很多好用的属性和方法，比如 `ctx.query`、`ctx.set()`。但它们并不是 `context` 封装的，而是在访问 `ctx` 上的属性时，它内部通过属性劫持将 `request` 和 `response` 内封装的属性返回。就像你访问 `ctx.query`，实际上访问的是 `ctx.request.query`。
 
-说到劫持你可能会想到 `Object.defineProperty`，在 `Kao` 内部使用的是 `ES6` 提供的对象的 `setter` 和 `getter`，效果也是一样的。所以要实现 `ctx`，我们首先要实现 `request.js` 和 `response.js`。
+说到劫持你可能会想到 `Object.defineProperty`，在 `Kao` 内部使用的是 `ES6` 提供的对象的 `setter` 和 `getter`，效果也是一样的。所以要实现 `ctx`，我们首先要实现 `request` 和 `response`。
 
 在此之前，需要修改下 `createContext` 方法：
 
@@ -114,7 +112,7 @@ module.exports = class Coa {
 
 上面一堆花里胡哨的赋值，是为了能通过多种途径获取属性。比如获取 `query` 属性，可以有 `ctx.query`、`ctx.request.query`、`ctx.app.query` 等等的方式。
 
-如果你觉得看起来难以理解，其实也可以主要理解这几行：
+如果你觉得看起来有点冗余，也可以主要理解这几行，因为我们实现源码时也就用到下面这些：
 
 ```js
 const request = ctx.request = Object.create(this.request)
@@ -139,12 +137,15 @@ module.exports = {
   * 此时的 this 是指向 ctx，所以这里的 this.req 访问的是原生属性 req
   * 同样，也可以通过 this.request.req 来访问
   */
+  // 请求的 query 参数
   get query() {
     return url.parse(this.req.url).query
   },
+  // 请求的路径
   get path() {
     return url.parse(this.req.url).pathname
   },
+  // 请求的方法
   get method() {
     return this.req.method.toLowerCase()
   }
@@ -158,17 +159,30 @@ module.exports = {
 ```js
 module.exports = {
   // 这里的 this.res 也和上面同理 
+  // 返回的状态码
   get status() {
     return this.res.statusCode
   },
   set status(val) {
     return this.res.statusCode = val
   },
+  // 返回的输出内容
   get body() {
     return this._body
   },
   set body(val) {
     return this._body = val
+  },
+  // 设置头部
+  set(filed, val) {
+    if (typeof filed === 'string') {
+      this.res.setHeader(filed, val)
+    }
+    if (toString.call(filed) === '[object Object]') {
+      for (const key in filed) {
+        this.set(key, filed[key])
+      }
+    }
   }
 }
 ```
@@ -189,7 +203,7 @@ module.exports = {
 }
 ```
 
-实际的代码中会有很多扩展的属性，总不可能一个一个去写吧。为了优雅的代理属性，`Koa` 使用 `delegates` 包实现。这里我不打算用 `delegates`，直接简单封装下代理函数。代理函数主要用到`__defineGetter__` 和 `__defineSetter__` 两个方法。
+实际的代码中会有很多扩展的属性，总不可能一个一个去写吧。为了优雅的代理属性，`Koa` 使用 `delegates` 包实现。这里我就直接简单封装下代理函数，代理函数主要用到`__defineGetter__` 和 `__defineSetter__` 两个方法。
 
 在对象上都会带有 `__defineGetter__` 和 `__defineSetter__`，它们可以将一个函数绑定在当前对象的指定属性上，当属性被获取或赋值时，绑定的函数就会被调用。就像这样：
 
@@ -236,10 +250,10 @@ delegateGetter('request', 'method')
 
 delegateGetter('response', 'status')
 delegateSetter('response', 'status')
+delegateGetter('response', 'body')
+delegateSetter('response', 'body')
 delegateMethod('response', 'set')
 ```
-
-
 
 ## 中间件原理
 
@@ -320,9 +334,7 @@ next1()
 
 ### 原理实现
 
-中间件原理实现的关键点主要就是 `ctx` 和 `next` 的传递。
-
-因为中间件是可以异步执行的，最后需要返回 `Promise`。
+中间件原理实现的关键点主要是 `ctx` 和 `next` 的传递。
 
 ```js
 function compose(middleware) {
@@ -332,15 +344,11 @@ function compose(middleware) {
       // 取出中间件
       let fn = middleware[i]
       if (!fn) {
-        return Promise.resolve()
+        return
       }
       // dispatch.bind(null, i + 1) 为应用中间件接受到的 next
-      // next 即下一个应用中间件的函数引用
-      try {
-        return Promise.resolve( fn(ctx, dispatch.bind(null, i + 1)) )
-      } catch (error) {
-        return Promise.reject(error)
-      }
+      // next 即下一个应用中间件
+      fn(ctx, dispatch.bind(null, i + 1))
     }
   }
 }
@@ -348,7 +356,7 @@ function compose(middleware) {
 
 可以看到，实现过程本质是函数的递归调用。在内部实现时，其实 `next` 没有做什么神奇的操作，它就是下一个中间件调用的函数，作为参数传入供使用者调用。
 
-下面我们来使用一下 `compose`，你可以将它粘贴到控制台上运行：
+下面我们来单独测试 `compose`，你可以将它粘贴到控制台上运行：
 
 ```js
 function next1(ctx, next) {
@@ -370,6 +378,98 @@ function next3(ctx, next) {
 let ctx = {}
 let fn = compose([next1, next2, next3])
 fn(ctx)
+```
+
+最后，因为 `Koa` 中间件是可以使用 `async/await` 异步执行的，所以还需要修改下 `compose` 返回 `Promise`：
+
+```js
+function compose(middleware) {
+  return function(ctx) {
+    return dispatch(0)
+    function dispatch(i){
+      // 取出中间件
+      let fn = middleware[i]
+      if (!fn) {
+        return Promise.resolve()
+      }
+      // dispatch.bind(null, i + 1) 为应用中间件接受到的 next
+      // next 即下一个应用中间件
+      try {
+        return Promise.resolve( fn(ctx, dispatch.bind(null, i + 1)) )
+      } catch (error) {
+        return Promise.reject(error)
+      }
+    }
+  }
+}
+```
+
+### 应用
+
+实现完成中间件的逻辑后，将它应用到迷你版`Koa`中，原来的代码逻辑要做一些修改(部分代码忽略)
+
+`application.js`:
+
+```js
+module.exports = class Coa {
+  constructor() {
+    // 存储中间件的数组 
+    this.middleware = []
+  }
+
+  use(fn) {
+    if (typeof fn !== 'function') throw new TypeError('middleware must be a function!');
+    // 将中间件加入数组
+    this.middleware.push(fn)
+    return this
+  }
+  
+  listen(...args) {
+    const server = http.createServer(this.callback())
+    server.listen(...args)
+  }
+
+  callback() {
+    const handleRequest = (req, res) => {
+      // 创建上下文
+      const ctx = this.createContext(req, res)
+      // fn 为第一个应用中间件
+      const fn = this.compose(this.middleware)
+      // 在所有中间件执行完毕后 respond 函数用于处理 ctx.body 输出
+      return fn(ctx).then(() => respond(ctx)).catch(console.error)
+    }
+    return handleRequest
+  }
+  
+  compose(middleware) {
+    return function(ctx) {
+      return dispatch(0)
+      function dispatch(i){
+        let fn = middleware[i]
+        if (!fn) {
+          return Promise.resolve()
+        }
+        // dispatch.bind(null, i + 1) 为应用中间件接受到的 next
+        try {
+          return Promise.resolve(fn(ctx, dispatch.bind(null, i + 1)))
+        } catch (error) {
+          return Promise.reject(error)
+        }
+      }
+    }
+  }
+}
+
+function respond(ctx) {
+  let res = ctx.res
+  let body = ctx.body
+  if (typeof body === 'string') {
+    return res.end(body)
+  }
+  if (typeof body === 'object') {
+    return res.end(JSON.stringify(body))
+  }
+}
 ```
 
 ## 完整实现
@@ -405,7 +505,7 @@ module.exports = class Coa {
     const handleRequest = (req, res) => {
       // 创建上下文
       const ctx = this.createContext(req, res)
-      // fn 为第一个应用中间件的引用
+      // fn 为第一个应用中间件
       const fn = this.compose(this.middleware)
       return fn(ctx).then(() => respond(ctx)).catch(console.error)
     }
@@ -440,7 +540,7 @@ module.exports = class Coa {
           return Promise.resolve()
         }
         // dispatch.bind(null, i + 1) 为应用中间件接受到的 next
-        // next 即下一个应用中间件的函数引用
+        // next 即下一个应用中间件
         try {
           return Promise.resolve(fn(ctx, dispatch.bind(null, i + 1)))
         } catch (error) {

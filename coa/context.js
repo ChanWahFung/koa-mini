@@ -23,5 +23,7 @@ delegateGetter('request', 'method')
 
 delegateGetter('response', 'status')
 delegateSetter('response', 'status')
+delegateGetter('response', 'body')
+delegateSetter('response', 'body')
 delegateMethod('response', 'set')
 
